@@ -23,7 +23,7 @@ powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | ie
 
 ```bash
 # 1. Clone and enter the project
-git clone <repo-url> && cd rag-system
+git clone https://github.com/adi199/rag-system && cd rag-system
 
 # 2. Copy and fill in your API keys
 cp .env.example .env
