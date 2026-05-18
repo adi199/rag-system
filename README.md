@@ -83,6 +83,6 @@ uv run python manage.py reindex
 
 | Service | Purpose | Get Key |
 |---|---|---|
-| Groq | LLM inference (query decomp + generation) | [console.groq.com/keys](https://console.groq.com/keys) |
-| LlamaCloud | PDF → Markdown parsing | [cloud.llamaindex.ai/api-key](https://cloud.llamaindex.ai/api-key) |
-| Supabase | Postgres + pgvector database | [supabase.com/dashboard](https://supabase.com/dashboard) → Settings → Database |
+| Groq | LLM inference (query decomp + generation) | [console.groq.com](https://console.groq.com) |
+| LlamaCloud | PDF → Markdown parsing | [cloud.llamaindex.ai](https://cloud.llamaindex.ai) |
+| Supabase | Postgres + pgvector database | [supabase.com](https://supabase.com) |
