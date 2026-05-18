@@ -24,13 +24,19 @@ powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | ie
 ```bash
 # 1. Clone and enter the project
 git clone https://github.com/adi199/rag-system && cd rag-system
+```
 
+```bash
 # 2. Copy and fill in your API keys
 cp .env.example .env
+```
 
+```bash
 # 3. Drop your PDFs into data/, then run the full setup
 uv run python manage.py setup
+```
 
+```bash
 # 4. Launch the app
 uv run streamlit run app.py
 ```
@@ -54,6 +60,10 @@ data/*.pdf  →  parse  →  data/*.md  →  ingest  →  Supabase  →  app.py
 ```bash
 # Adding new documents to an existing deployment:
 cp new_docs/*.pdf data/
+```
+
+```bash
+# Re-ingest (parse + embed + store) only the new PDFs
 uv run python manage.py reindex
 ```
 
