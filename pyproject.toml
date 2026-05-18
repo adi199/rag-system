@@ -16,4 +16,8 @@ dependencies = [
     "cohere>=6.1.0",
     "groq>=1.2.0",
     "llama-parse>=0.5.20",
+    "psycopg[binary]>=3.3.4",
+    "pgvector>=0.4.2",
+    "semchunk>=3.2.5",
+    "tqdm>=4.67.3",
 ]
