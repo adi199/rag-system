@@ -1,6 +1,6 @@
 """
-setup_db.py
------------
+init_db.py
+----------
 Run once to prepare the Supabase Postgres database for the RAG system.
 
 Steps:
