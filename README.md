@@ -10,7 +10,16 @@ Drop PDFs into `data/`, index them, and ask questions in a chat UI.
 
 ## Quickstart
 
-**Prerequisites:** [uv](https://docs.astral.sh/uv/getting-started/installation/)
+**Prerequisites:** [uv](https://docs.astral.sh/uv/getting-started/installation/) — fast Python package manager
+
+Install uv if you don't have it:
+```bash
+# macOS / Linux
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Windows (PowerShell)
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
 
 ```bash
 # 1. Clone and enter the project
