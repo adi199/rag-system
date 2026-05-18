@@ -13,31 +13,39 @@ Drop PDFs into `data/`, index them, and ask questions in a chat UI.
 **Prerequisites:** [uv](https://docs.astral.sh/uv/getting-started/installation/) — fast Python package manager
 
 Install uv if you don't have it:
-```bash
-# macOS / Linux
-curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# Windows (PowerShell)
+### macOS / Linux
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+### Windows (PowerShell)
+```powershell
 powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
 ```
 
+### 1. Clone and enter the project
 ```bash
-# 1. Clone and enter the project
 git clone https://github.com/adi199/rag-system && cd rag-system
 ```
 
+### 2. Copy and fill in your API keys
 ```bash
-# 2. Copy and fill in your API keys
 cp .env.example .env
 ```
 
+### 3. Install dependencies
 ```bash
-# 3. Drop your PDFs into data/, then run the full setup
+uv sync
+```
+
+### 4. Drop your PDFs into data/, then run the full setup
+```bash
 uv run python manage.py setup
 ```
 
+### 5. Launch the app
 ```bash
-# 4. Launch the app
 uv run streamlit run app.py
 ```
 
@@ -57,13 +65,13 @@ data/*.pdf  →  parse  →  data/*.md  →  ingest  →  Supabase  →  app.py
 | `manage.py parse` | Re-parse PDFs → Markdown only |
 | `manage.py ingest` | Re-embed and store Markdown → Supabase only |
 
+### Adding new documents to an existing deployment
 ```bash
-# Adding new documents to an existing deployment:
 cp new_docs/*.pdf data/
 ```
 
+### Re-ingest (parse + embed + store) only the new PDFs
 ```bash
-# Re-ingest (parse + embed + store) only the new PDFs
 uv run python manage.py reindex
 ```
 
