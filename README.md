@@ -86,5 +86,3 @@ uv run python manage.py reindex
 | Groq | LLM inference (query decomp + generation) | [console.groq.com/keys](https://console.groq.com/keys) |
 | LlamaCloud | PDF → Markdown parsing | [cloud.llamaindex.ai/api-key](https://cloud.llamaindex.ai/api-key) |
 | Supabase | Postgres + pgvector database | [supabase.com/dashboard](https://supabase.com/dashboard) → Settings → Database |
-| Cohere | (optional, currently unused) | [dashboard.cohere.com/api-keys](https://dashboard.cohere.com/api-keys) |
-| OpenRouter | (optional, alternative LLM routing) | [openrouter.ai/keys](https://openrouter.ai/keys) |
