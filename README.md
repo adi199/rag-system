@@ -81,28 +81,96 @@ uv run python manage.py reindex
 
 <!-- MEDIA: architecture diagram — PDF → LlamaParse → Supabase pgvector → Streamlit -->
 
-### Ingestion Pipeline
+### High-Level Architecture
 
-1. **Parse** — [LlamaParse](https://cloud.llamaindex.ai) converts each PDF page to structured Markdown with a `Context:` summary block injected at the top of every page.
-2. **Chunk** — [semchunk](https://github.com/umarbutler/semchunk) splits each page semantically, respecting the token budget of the embedding model.
-3. **Embed** — `all-MiniLM-L6-v2` (SentenceTransformers) generates 384-dimensional vectors.
-4. **Store** — Chunks are batch-inserted into Supabase Postgres with both an embedding column (`vector(384)`) and a generated `tsvector` column for full-text search.
+```
+PDFs (data/)
+  └─ parse.py (LlamaParse API)
+       └─ Markdown files (data/*.md)
+            └─ ingest.py (semchunk + all-MiniLM-L6-v2)
+                 └─ Supabase PostgreSQL (pgvector)
+                      └─ app.py (Streamlit)
+                           ├─ Groq: query decomposition  (llama-4-scout-17b)
+                           ├─ hybrid_search() RPC        (BM25 + HNSW via RRF)
+                           ├─ CrossEncoder rerank        (ms-marco-MiniLM-L-6-v2)
+                           └─ Groq: answer generation    (llama-3.3-70b-versatile)
+```
 
-### Retrieval Pipeline
+### Database
 
-<!-- MEDIA: short screen recording of a query being answered with citations -->
+**Supabase PostgreSQL** (not a data warehouse) with the `pgvector` extension. A single `documents` table stores all chunks:
 
-1. **Query decomposition** — Groq LLM breaks complex questions into 2–3 keyword-dense sub-queries.
-2. **Hybrid search** — A Postgres RPC (`hybrid_search`) fuses BM25 full-text ranking and HNSW vector search using Reciprocal Rank Fusion (RRF).
-3. **Rerank** — A `cross-encoder/ms-marco-MiniLM-L-6-v2` CrossEncoder re-scores the retrieved chunks.
-4. **Generate** — Groq streams the final answer, grounded strictly in the retrieved context.
+| Column | Type | Description |
+|---|---|---|
+| `id` | `BIGINT` (identity) | Primary key |
+| `chunk_id` | `TEXT` | `{filename}-chunk{N}` |
+| `content` | `TEXT` | Full enriched chunk text |
+| `metadata` | `JSONB` | `{"source": filename, "page": N}` |
+| `embedding` | `vector(384)` | Normalized `all-MiniLM-L6-v2` embedding |
+| `fts` | `tsvector` (generated) | Auto-updated BM25 index over `content` |
 
-### Key Decisions
+Indexes: **GIN** on `fts`, **HNSW** (`vector_ip_ops`) on `embedding`.
 
-- **Supabase + pgvector** — eliminates a separate vector store; hybrid search and metadata filtering happen in a single SQL query.
-- **Transaction-mode PgBouncer (port 6543)** — Supabase's default pooler; prepared statements are disabled (`prepare_threshold=None`) to stay compatible.
-- **`autocommit=True` during retrieval** — releases the backend connection back to the pool before the CPU-bound CrossEncoder runs, preventing connection pinning.
-- **Context block per page** — LlamaParse is instructed to prepend a 2–3 sentence `Context:` summary to every page, so chunks that lack headings still carry document-level metadata into the embedding space.
+The database is accessed via Supabase's PgBouncer pooler in **transaction mode** (port 6543). Prepared statements are disabled (`prepare_threshold=None`) for compatibility. During retrieval, `autocommit=True` ensures the connection is released back to the pool before the CPU-bound CrossEncoder runs.
+
+### Chunking Strategy
+
+Each PDF page is processed independently:
+
+1. LlamaParse emits a `Context:` line (2–3 sentence summary) at the top of every page — carrying company name, date, and key topics.
+2. The full page text is cleaned: HTML entities decoded, LlamaParse structural label lines stripped, `Metric Name:` prefixes removed, excess blank lines collapsed.
+3. Pages with fewer than 80 characters of body content after the `Context:` line are dropped (section dividers).
+4. `semchunk` splits the cleaned page text semantically using the `all-MiniLM-L6-v2` tokenizer at a **512-token chunk size**.
+5. Every chunk gets a `[Document: filename, Page: N]` header prepended. If the chunk doesn't already open with the `Context:` line, that line is also prepended — ensuring every chunk carries page-level context into the embedding space.
+
+Chunk IDs follow the pattern `{source_filename}-chunk{N}` and are stored alongside `source` and `page` in the `metadata` JSONB column.
+
+### Retrieval Approach
+
+1. **Query decomposition** — `llama-4-scout-17b` (Groq, temperature=0) rewrites the user question into 2–3 keyword-dense sub-queries. Each is searched independently.
+2. **Hybrid search** — Each sub-query hits a Postgres RPC (`hybrid_search`) that fuses:
+   - BM25 full-text ranking (`websearch_to_tsquery`)
+   - HNSW approximate nearest-neighbour search (inner product)
+   - Combined via **Reciprocal Rank Fusion** (`rrf_k=50`, equal weights)
+   - Returns up to 20 candidates per sub-query.
+3. **CrossEncoder rerank** — `ms-marco-MiniLM-L-6-v2` scores each (query, chunk) pair; top 5 per sub-query are kept.
+4. **Deduplication** — chunks seen across sub-queries are deduplicated by content before being passed to the LLM.
+5. **Generation** — `llama-3.3-70b-versatile` (Groq, temperature=0, streaming) generates the answer strictly from the retrieved context with mandatory `[Source: chunk_id]` citations.
+
+### How Specific Cases Are Handled
+
+**Versioning**
+There is no explicit version field in the schema. Documents are distinguished by filename — the `source` metadata field contains the original PDF filename, and the `chunk_id` encodes it as a prefix. The LLM system prompt explicitly instructs the model to treat documents as potentially representing different versions or time periods, never blend values silently, and report each separately with its source citation.
+
+**Conflicting information**
+Handled entirely at the prompt level. The system prompt instructs the LLM: *"If documents contain contradictory information, surface the conflict explicitly."* There is no retrieval-level conflict detection.
+
+**Charts and tables**
+LlamaParse is given strict per-category instructions:
+- **Tables** → emitted as valid Markdown tables with explicit column headers; each dataset presented once only.
+- **KPI boxes / callouts** → emitted as `Metric Name: Value` key-value pairs; no number is left unlabeled.
+- **Charts** → only explicitly labeled data points are extracted. If values cannot be clearly read, the output is `Chart present – data not extractable. Description: ...`. Fabrication is explicitly forbidden in the parsing instruction.
+
+The LLM system prompt mirrors this: it forbids outputting raw HTML or re-encoding entities, and requires all tabular data to use standard Markdown table syntax.
+
+---
+
+### Known Limitations
+
+- **No upsert on re-ingestion.** Running `ingest` on an already-indexed document appends duplicate chunks rather than replacing them. `setup` avoids this by dropping the table first, but `reindex` does not.
+- **Versioning is filename-based.** Two files with the same name but different content cannot be distinguished in the index.
+- **Section-divider threshold is a fixed constant** (80 chars). Pages with sparse but meaningful content may be incorrectly dropped.
+- **LlamaParse hallucination guard is warn-only.** A hardcoded list of known-bad company names triggers a log warning but no automatic correction.
+- **No evaluation framework.** Retrieval quality is assessed manually; there are no automated recall/precision metrics.
+- **Single-tenant index.** All documents share one `documents` table with no namespace isolation.
+
+### What Would Be Improved With More Time
+
+- **Upsert logic** — `INSERT ... ON CONFLICT (chunk_id) DO UPDATE` to make re-ingestion idempotent.
+- **Explicit version/date metadata field** in the schema, populated from filename or document frontmatter, enabling filtered retrieval by version.
+- **Retrieval evaluation pipeline** — a small labelled Q&A set to measure recall@k and track regressions when chunking or search parameters change.
+- **Async ingestion with progress streaming** to the Streamlit UI.
+- **Namespace / collection isolation** per document set, so different corpora can coexist in one database without cross-contamination.
 
 ---
 
